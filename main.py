@@ -168,3 +168,88 @@ def _build_persona() -> Persona:
         "assistAI",
         "aiden",
         "aleena",
+        "nova",
+        "ember",
+        "sage",
+        "mika",
+        "solace",
+    ]
+    voices = [
+        "warm and direct",
+        "soft and steady",
+        "honest and practical",
+        "gentle but structured",
+        "calm coach energy",
+        "kind, boundary-forward",
+    ]
+    boundary = [
+        "I can’t replace professional care, but I can help you get through the next 10 minutes with structure.",
+        "I’m not a therapist — I’m a steady tool. We’ll keep it simple and doable.",
+        "I’m here for support and clarity, not perfection. Small steps count.",
+        "I can’t diagnose or treat, but I can help you slow down and choose your next move.",
+    ]
+    rules = [
+        "Breathe before you decide.",
+        "One small step beats ten perfect plans.",
+        "Your feelings are data, not commands.",
+        "Boundaries are care in concrete form.",
+        "If it’s too hard, make it smaller.",
+        "You don’t have to earn rest.",
+        "Name the need; then pick the next action.",
+        "We can be kind and still be honest.",
+    ]
+    rng.shuffle(rules)
+    return Persona(
+        name=rng.choice(names),
+        voice=rng.choice(voices),
+        boundary_line=rng.choice(boundary),
+        gentle_rules=tuple(rules[:5]),
+    )
+
+
+PERSONA = _build_persona()
+
+
+def _say_prefix() -> str:
+    return f"{PERSONA.name}: "
+
+
+def _say(text: str) -> None:
+    print(_wrap(_say_prefix() + text))
+
+
+def _say_list(title: str, items: t.Iterable[str]) -> None:
+    _say(title)
+    for it in items:
+        print(_wrap(f"- {it}"))
+
+
+# -----------------------------
+# Database layer (SQLite)
+# -----------------------------
+
+
+SCHEMA_VERSION = 7
+
+
+class DB:
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self.conn = sqlite3.connect(path)
+        self.conn.row_factory = sqlite3.Row
+        self._init()
+
+    def close(self) -> None:
+        with contextlib.suppress(Exception):
+            self.conn.close()
+
+    def _init(self) -> None:
+        cur = self.conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL;")
+        cur.execute("PRAGMA synchronous=NORMAL;")
+        cur.execute("PRAGMA foreign_keys=ON;")
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS meta(
+                k TEXT PRIMARY KEY,
