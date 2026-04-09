@@ -1358,3 +1358,88 @@ def do_journal_list_and_read(db: DB) -> None:
             short = short[:42].rstrip() + "…"
         print(f"{i:2d}) {j.created_at[:19]}  {short}  ({j.id})")
     ix = _int_prompt("Open which one", 1, len(items), default=1)
+    entry = items[ix - 1]
+    _print_box(entry.title, entry.body)
+
+    if _yn("Edit this entry?", default=False):
+        new_title = _soft_prompt("New title (blank to keep):")
+        if not new_title.strip():
+            new_title = None
+        new_body = _read_multiline("New body (end with '.')", max_chars=24000)
+        if not new_body.strip():
+            new_body = None
+        new_tags = None
+        if _yn("Edit tags?", default=False):
+            new_tags = _split_tags(_soft_prompt("Tags:"))
+        ok = update_journal(db, entry.id, title=new_title, body=new_body, tags=new_tags)
+        if ok:
+            _say("Updated.")
+        else:
+            _say("Couldn’t update (entry missing).")
+        _pause()
+
+    if _yn("Delete this entry?", default=False):
+        if _yn("Are you sure? This can’t be undone.", default=False):
+            ok = delete_journal(db, entry.id)
+            _say("Deleted." if ok else "Couldn’t delete (entry missing).")
+            _pause()
+
+
+def do_export(db: DB) -> None:
+    _say("Exporting your data to files you can keep.")
+    jp = export_json(db)
+    mp = export_markdown(db)
+    _say(f"Done.\n- JSON: {jp}\n- Markdown: {mp}")
+    _pause()
+
+
+def do_settings(db: DB) -> None:
+    _say("Settings are intentionally small. This is a support tool, not a configuration project.")
+    cur_name = db.get_setting("display_name", "")
+    cur_width = int(db.get_setting("wrap_width", "86") or "86")
+    print(_hr())
+    print(f"1) Display name (shown in exports): {cur_name!r}")
+    print(f"2) Wrap width: {cur_width}")
+    print("0) Back")
+    print(_hr())
+    choice = _soft_prompt("Choose:")
+    if choice == "1":
+        v = _soft_prompt("Display name (blank to clear):")
+        db.set_setting("display_name", v.strip())
+        _say("Saved.")
+        _pause()
+    elif choice == "2":
+        w = _int_prompt("Wrap width", 60, 120, default=cur_width)
+        db.set_setting("wrap_width", str(w))
+        _say("Saved. (Restart app to apply everywhere.)")
+        _pause()
+
+
+# -----------------------------
+# CLI commands (non-interactive)
+# -----------------------------
+
+
+def cmd_quick_checkin(db: DB, mood: int, energy: int, stress: int, intent: str, note: str, tags: str) -> None:
+    ck = add_checkin(db, mood, energy, stress, intent, note, _split_tags(tags))
+    msg = ENGINE.micro_advice(ck.mood, ck.energy, ck.stress)
+    print(json.dumps(dataclasses.asdict(ck), ensure_ascii=False, indent=2))
+    print()
+    print(_wrap(msg))
+
+
+def cmd_export(db: DB, fmt: str) -> None:
+    if fmt == "json":
+        print(export_json(db))
+    elif fmt == "md":
+        print(export_markdown(db))
+    elif fmt == "both":
+        print(export_json(db))
+        print(export_markdown(db))
+    else:
+        raise SystemExit("format must be one of: json, md, both")
+
+
+def cmd_insights(db: DB) -> None:
+    items = list_checkins(db, limit=120)
+    if not items:
