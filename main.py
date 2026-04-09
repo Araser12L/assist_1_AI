@@ -1188,3 +1188,88 @@ def export_json(db: DB) -> str:
         "journal": journal,
         "exercises": exercises,
     }
+
+    fn = f"assistAI_export_{_today_key()}_{_rand_token(8)}.json"
+    path = os.path.join(_export_dir(), fn)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def export_markdown(db: DB) -> str:
+    items = list_checkins(db, limit=400)
+    journal = list_journal(db, limit=250)
+    exercises = list_exercises(db, limit=250)
+
+    fn = f"assistAI_export_{_today_key()}_{_rand_token(8)}.md"
+    path = os.path.join(_export_dir(), fn)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"# assistAI export\n\n")
+        f.write(f"- exported_at: `{_now().isoformat()}`\n")
+        f.write(f"- install_id: `{_get_install_id()}`\n")
+        f.write(f"- persona: `{PERSONA.name}` ({PERSONA.voice})\n\n")
+
+        f.write("## Check-ins\n\n")
+        for c in items[::-1]:
+            f.write(f"- `{c.created_at}` mood {c.mood} energy {c.energy} stress {c.stress}  intent: **{c.intent}**  glyph `{c.glyph}`\n")
+            if c.tags:
+                f.write(f"  - tags: {', '.join(c.tags)}\n")
+            if c.note.strip():
+                note = c.note.strip().replace("\n", " ").strip()
+                if len(note) > 240:
+                    note = note[:240].rstrip() + "…"
+                f.write(f"  - note: {note}\n")
+        f.write("\n")
+
+        f.write("## Journal\n\n")
+        for j in journal[::-1]:
+            f.write(f"### {j.title}\n\n")
+            f.write(f"- id: `{j.id}`\n")
+            f.write(f"- created_at: `{j.created_at}`\n")
+            f.write(f"- updated_at: `{j.updated_at}`\n")
+            f.write(f"- hints: mood {j.mood_hint} energy {j.energy_hint} stress {j.stress_hint}\n")
+            if j.tags:
+                f.write(f"- tags: {', '.join(j.tags)}\n")
+            f.write("\n")
+            f.write(j.body.strip() + "\n\n")
+
+        f.write("## Exercises\n\n")
+        for e in exercises[::-1]:
+            f.write(f"- `{e.created_at}` **{e.kind}** `{e.id}`\n")
+            f.write("  ```json\n")
+            f.write(json.dumps(e.payload, ensure_ascii=False, indent=2))
+            f.write("\n  ```\n")
+        f.write("\n")
+
+    return path
+
+
+# -----------------------------
+# Menu UI
+# -----------------------------
+
+
+def _banner(db: DB) -> None:
+    install_id = _get_install_id()
+    _print_box(
+        _title(f"{PERSONA.name} — local support assistant"),
+        (
+            f"Voice: {PERSONA.voice}\n\n"
+            f"{PERSONA.boundary_line}\n\n"
+            f"Install ID: {install_id}\n"
+            f"Database: {db.path}"
+        ),
+    )
+
+
+def _menu() -> list[tuple[str, str]]:
+    return [
+        ("1", "Check-in (mood/energy/stress) + micro advice"),
+        ("2", "Journal: write a new entry"),
+        ("3", "Journal: list + read entries"),
+        ("4", "Exercise: grounding script"),
+        ("5", "Exercise: breathing rounds"),
+        ("6", "Exercise: reframe a feeling"),
+        ("7", "Exercise: thought record"),
+        ("8", "Exercise: values clarifier"),
+        ("9", "Safety: create a mini safety plan"),
