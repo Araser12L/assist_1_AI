@@ -933,3 +933,88 @@ def run_breathing(db: DB) -> None:
         {"started_at": t0, "ended_at": _now().isoformat(), "rounds": rounds, "counts": {"inhale": inh, "hold1": h1, "exhale": exh, "hold2": h2}},
     )
     _pause()
+
+
+def run_grounding(db: DB) -> None:
+    seconds = random.choice([60, 75, 90, 105, 120, 135])
+    steps = ENGINE.grounding_script(seconds=seconds)
+    _say("Let’s do a grounding reset. I’ll guide you line by line.")
+    _pause()
+    t0 = _now().isoformat()
+    for s in steps:
+        _say(s)
+        _pause()
+    add_exercise_log(db, "grounding", {"started_at": t0, "ended_at": _now().isoformat(), "seconds": seconds, "steps": steps})
+    _say("If you want, do one tiny next action now. Then come back.")
+    _pause()
+
+
+def _choose_from(prompt: str, options: list[str], default: int = 1) -> int:
+    print(_wrap(prompt))
+    for i, o in enumerate(options, 1):
+        print(f"{i:2d}) {o}")
+    return _int_prompt("Choose", 1, len(options), default=default)
+
+
+def run_reframe(db: DB) -> None:
+    opts = ["guilt", "shame", "anger", "grief", "fear", "lonely", "overwhelmed", "numb", "something else"]
+    ix = _choose_from("Which feeling fits closest right now?", opts, default=3)
+    label = opts[ix - 1]
+    if label == "something else":
+        label = _soft_prompt("Name it in 1–3 words:").strip().lower()[:40] or "a lot"
+    msg = ENGINE.reframe(label)
+    _print_box("Reframe", msg)
+    add_exercise_log(db, "reframe", {"label": label, "message": msg, "at": _now().isoformat()})
+    _pause()
+
+
+def run_thought_record(db: DB) -> None:
+    _say("Thought record time. Short and honest. You’re not on trial.")
+    situation = _soft_prompt("Situation (1 line):")[:300]
+    feelings = _soft_prompt("Feelings (e.g., anxious 70, sad 40):")[:300]
+    auto_thought = _soft_prompt("Automatic thought (what your brain yelled):")[:800]
+    evidence_for = _soft_prompt("Evidence FOR that thought (short):")[:800]
+    evidence_against = _soft_prompt("Evidence AGAINST (short):")[:800]
+    alt_thought = _soft_prompt("More balanced thought (one sentence):")[:800]
+    next_step = _soft_prompt("Next step (tiny action):")[:300]
+    payload = {
+        "situation": situation,
+        "feelings": feelings,
+        "automatic_thought": auto_thought,
+        "evidence_for": evidence_for,
+        "evidence_against": evidence_against,
+        "balanced_thought": alt_thought,
+        "next_step": next_step,
+    }
+    add_exercise_log(db, "thought_record", payload)
+    _say("That was brave. Balanced thoughts aren’t 'positive' thoughts. They’re honest thoughts.")
+    _pause()
+
+
+def run_values_clarifier(db: DB) -> None:
+    _say("Let’s find what matters to you. Not what you *should* care about. What you actually care about.")
+    domains = [
+        "relationships",
+        "health",
+        "learning",
+        "work / craft",
+        "community",
+        "creativity",
+        "stability",
+        "adventure",
+        "spirituality",
+        "service",
+    ]
+    self_rng = random.Random(int(hashlib.sha256(("values|" + _get_install_id()).encode("utf-8")).hexdigest()[:16], 16))
+    self_rng.shuffle(domains)
+    chosen = domains[:5]
+    _say_list("Pick 2 domains that feel important right now:", chosen)
+    a = _int_prompt("First pick", 1, 5, default=1)
+    b = _int_prompt("Second pick (different)", 1, 5, default=2)
+    if b == a:
+        b = 5 if a != 5 else 4
+    d1, d2 = chosen[a - 1], chosen[b - 1]
+    v1 = _soft_prompt(f"In '{d1}', what do you want to stand for? (3-8 words):")[:80].strip()
+    v2 = _soft_prompt(f"In '{d2}', what do you want to stand for? (3-8 words):")[:80].strip()
+    act = _soft_prompt("One tiny action that matches one of those values (today or tomorrow):")[:120].strip()
+    payload = {"domains_presented": chosen, "picked": [d1, d2], "value_lines": [v1, v2], "tiny_action": act, "at": _now().isoformat()}
