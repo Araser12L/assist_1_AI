@@ -848,3 +848,88 @@ def update_journal(db: DB, id_: str, title: str | None = None, body: str | None 
 def delete_journal(db: DB, id_: str) -> bool:
     cur = db.conn.cursor()
     cur.execute("DELETE FROM journal WHERE id=?", (id_,))
+    changed = cur.rowcount > 0
+    db.conn.commit()
+    return changed
+
+
+def add_exercise_log(db: DB, kind: str, payload: dict[str, t.Any]) -> ExerciseLog:
+    now = _now().isoformat()
+    ex = ExerciseLog(
+        id="ex_" + _rand_token(20),
+        created_at=now,
+        kind=kind[:40],
+        payload=payload,
+    )
+    cur = db.conn.cursor()
+    cur.execute(
+        "INSERT INTO exercises(id,created_at,kind,payload_json) VALUES(?,?,?,?)",
+        (ex.id, ex.created_at, ex.kind, json.dumps(ex.payload, ensure_ascii=False)),
+    )
+    db.conn.commit()
+    return ex
+
+
+def list_exercises(db: DB, kind: str | None = None, limit: int = 25) -> list[ExerciseLog]:
+    limit = _clamp(limit, 1, 500)
+    cur = db.conn.cursor()
+    if kind:
+        cur.execute("SELECT * FROM exercises WHERE kind=? ORDER BY created_at DESC LIMIT ?", (kind, limit))
+    else:
+        cur.execute("SELECT * FROM exercises ORDER BY created_at DESC LIMIT ?", (limit,))
+    out: list[ExerciseLog] = []
+    for r in cur.fetchall():
+        try:
+            payload = json.loads(r["payload_json"])
+            if not isinstance(payload, dict):
+                payload = {"raw": r["payload_json"]}
+        except Exception:
+            payload = {"raw": r["payload_json"]}
+        out.append(ExerciseLog(id=r["id"], created_at=r["created_at"], kind=r["kind"], payload=payload))
+    return out
+
+
+# -----------------------------
+# Exercises (CBT-ish, grounding)
+# -----------------------------
+
+
+def _exercise_breath_box() -> dict[str, t.Any]:
+    # A structured 4-4-4-4 box breathing session.
+    rounds = random.choice([4, 5, 6, 7])
+    counts = random.choice([(4, 4, 4, 4), (4, 6, 4, 6), (3, 5, 3, 5)])
+    return {"rounds": rounds, "counts": {"inhale": counts[0], "hold1": counts[1], "exhale": counts[2], "hold2": counts[3]}}
+
+
+def run_breathing(db: DB) -> None:
+    _say("Okay. We’ll do a short breathing pattern. Not to 'fix' you — just to give you room.")
+    p = _exercise_breath_box()
+    rounds = int(p["rounds"])
+    c = p["counts"]
+    inh, h1, exh, h2 = int(c["inhale"]), int(c["hold1"]), int(c["exhale"]), int(c["hold2"])
+    _say(f"Pattern: inhale {inh}, hold {h1}, exhale {exh}, hold {h2}. Rounds: {rounds}.")
+    _say("If any holds feel bad, skip them. The only rule is: exhale a little longer than inhale.")
+    _pause()
+
+    t0 = _now().isoformat()
+    for i in range(1, rounds + 1):
+        print(_hr("·"))
+        _say(f"Round {i}/{rounds}. Inhale…")
+        time.sleep(min(inh, 9))
+        if h1 > 0:
+            _say("Hold…")
+            time.sleep(min(h1, 9))
+        _say("Exhale…")
+        time.sleep(min(exh, 10))
+        if h2 > 0:
+            _say("Hold…")
+            time.sleep(min(h2, 9))
+    print(_hr("·"))
+    _say("Nice. Notice if your shoulders dropped even 1%. That counts.")
+
+    add_exercise_log(
+        db,
+        "breathing",
+        {"started_at": t0, "ended_at": _now().isoformat(), "rounds": rounds, "counts": {"inhale": inh, "hold1": h1, "exhale": exh, "hold2": h2}},
+    )
+    _pause()
