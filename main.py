@@ -1273,3 +1273,88 @@ def _menu() -> list[tuple[str, str]]:
         ("7", "Exercise: thought record"),
         ("8", "Exercise: values clarifier"),
         ("9", "Safety: create a mini safety plan"),
+        ("10", "Safety: view saved safety plans"),
+        ("11", "Insights: patterns from check-ins"),
+        ("12", "Export: JSON + Markdown"),
+        ("13", "Settings: small preferences"),
+        ("0", "Exit"),
+    ]
+
+
+def _show_menu() -> None:
+    print(_hr())
+    for k, label in _menu():
+        print(f"{k:>2}  {label}")
+    print(_hr())
+
+
+def do_checkin_flow(db: DB) -> None:
+    _say("Let’s do a check-in. No judgement. Just data.")
+    mood = _int_prompt("Mood", 0, 100, default=50)
+    energy = _int_prompt("Energy", 0, 100, default=50)
+    stress = _int_prompt("Stress", 0, 100, default=50)
+    intent = _soft_prompt("Intent (what you want from this moment):")[:80]
+    note = _soft_prompt("Note (optional, 1-2 lines):")[:700]
+    tags = _split_tags(_soft_prompt("Tags (optional, comma/space separated):"))
+
+    crisis, crisis_msg = ENGINE.validate_crisis(" ".join([intent, note]))
+    if crisis:
+        _print_box("Important", crisis_msg)
+
+    ck = add_checkin(db, mood, energy, stress, intent, note, tags)
+    _say("Saved. Thank you for being honest with me.")
+    _say(f"Your check-in glyph is `{ck.glyph}`. You don’t need it, but it can be a little anchor.")
+    msg = ENGINE.micro_advice(ck.mood, ck.energy, ck.stress)
+    _print_box("Micro advice", msg)
+    _say_list("Gentle rules (today):", ENGINE.gentle_rules())
+    _pause()
+
+
+def _read_multiline(prompt: str, max_chars: int = 24000) -> str:
+    _say(prompt)
+    _say("Type your text. End with a single line containing only `.`")
+    lines: list[str] = []
+    n = 0
+    while True:
+        line = input()
+        if line.strip() == ".":
+            break
+        if n + len(line) + 1 > max_chars:
+            _say("Okay, that’s a lot. I’m going to stop there so it stays manageable.")
+            break
+        lines.append(line)
+        n += len(line) + 1
+    return "\n".join(lines).strip()
+
+
+def do_journal_new(db: DB) -> None:
+    _say("Let’s write. You can be messy. This is for you.")
+    title = _soft_prompt("Title:")[:140]
+    mood_hint = _int_prompt("Mood hint", 0, 100, default=50)
+    energy_hint = _int_prompt("Energy hint", 0, 100, default=50)
+    stress_hint = _int_prompt("Stress hint", 0, 100, default=50)
+    tags = _split_tags(_soft_prompt("Tags (optional):"))
+    body = _read_multiline("Write your entry now.", max_chars=24000)
+
+    crisis, crisis_msg = ENGINE.validate_crisis(body)
+    if crisis:
+        _print_box("Important", crisis_msg)
+
+    je = add_journal(db, title, body, mood_hint, energy_hint, stress_hint, tags)
+    _say(f"Saved journal entry `{je.id}`.")
+    _pause()
+
+
+def do_journal_list_and_read(db: DB) -> None:
+    items = list_journal(db, limit=35)
+    if not items:
+        _say("No journal entries yet. Want to write one?")
+        _pause()
+        return
+    _say("Recent journal entries:")
+    for i, j in enumerate(items, 1):
+        short = j.title
+        if len(short) > 42:
+            short = short[:42].rstrip() + "…"
+        print(f"{i:2d}) {j.created_at[:19]}  {short}  ({j.id})")
+    ix = _int_prompt("Open which one", 1, len(items), default=1)
