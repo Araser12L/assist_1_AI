@@ -763,3 +763,88 @@ def add_journal(db: DB, title: str, body: str, mood_hint: int, energy_hint: int,
     cur = db.conn.cursor()
     cur.execute(
         """
+        INSERT INTO journal(id,created_at,updated_at,title,body,mood_hint,energy_hint,stress_hint,tags)
+        VALUES(?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            je.id,
+            je.created_at,
+            je.updated_at,
+            je.title,
+            je.body,
+            je.mood_hint,
+            je.energy_hint,
+            je.stress_hint,
+            _tags_json(je.tags),
+        ),
+    )
+    db.conn.commit()
+    return je
+
+
+def list_journal(db: DB, limit: int = 25) -> list[JournalEntry]:
+    limit = _clamp(limit, 1, 500)
+    cur = db.conn.cursor()
+    cur.execute("SELECT * FROM journal ORDER BY created_at DESC LIMIT ?", (limit,))
+    out: list[JournalEntry] = []
+    for r in cur.fetchall():
+        out.append(
+            JournalEntry(
+                id=r["id"],
+                created_at=r["created_at"],
+                updated_at=r["updated_at"],
+                title=r["title"],
+                body=r["body"],
+                mood_hint=int(r["mood_hint"]),
+                energy_hint=int(r["energy_hint"]),
+                stress_hint=int(r["stress_hint"]),
+                tags=_tags_from_json(r["tags"]),
+            )
+        )
+    return out
+
+
+def get_journal(db: DB, id_: str) -> JournalEntry | None:
+    cur = db.conn.cursor()
+    cur.execute("SELECT * FROM journal WHERE id=?", (id_,))
+    r = cur.fetchone()
+    if not r:
+        return None
+    return JournalEntry(
+        id=r["id"],
+        created_at=r["created_at"],
+        updated_at=r["updated_at"],
+        title=r["title"],
+        body=r["body"],
+        mood_hint=int(r["mood_hint"]),
+        energy_hint=int(r["energy_hint"]),
+        stress_hint=int(r["stress_hint"]),
+        tags=_tags_from_json(r["tags"]),
+    )
+
+
+def update_journal(db: DB, id_: str, title: str | None = None, body: str | None = None, tags: list[str] | None = None) -> bool:
+    cur = db.conn.cursor()
+    cur.execute("SELECT * FROM journal WHERE id=?", (id_,))
+    r = cur.fetchone()
+    if not r:
+        return False
+    new_title = (title if title is not None else r["title"]).strip()[:140] or "Untitled"
+    new_body = (body if body is not None else r["body"]).strip()[:24000]
+    new_tags = tags if tags is not None else _tags_from_json(r["tags"])
+    now = _now().isoformat()
+    cur.execute(
+        """
+        UPDATE journal
+        SET updated_at=?, title=?, body=?, tags=?
+        WHERE id=?
+        """,
+        (now, new_title, new_body, _tags_json(new_tags[:40]), id_),
+    )
+    db.conn.commit()
+    return True
+
+
+def delete_journal(db: DB, id_: str) -> bool:
+    cur = db.conn.cursor()
+    cur.execute("DELETE FROM journal WHERE id=?", (id_,))
