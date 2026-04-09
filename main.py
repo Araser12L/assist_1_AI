@@ -1528,3 +1528,72 @@ def build_parser() -> argparse.ArgumentParser:
 
     q = sub.add_parser("checkin", help="Quick non-interactive check-in.")
     q.add_argument("--mood", type=int, required=True)
+    q.add_argument("--energy", type=int, required=True)
+    q.add_argument("--stress", type=int, required=True)
+    q.add_argument("--intent", default="steady myself")
+    q.add_argument("--note", default="")
+    q.add_argument("--tags", default="")
+
+    e = sub.add_parser("export", help="Export your data.")
+    e.add_argument("--format", choices=["json", "md", "both"], default="both")
+
+    sub.add_parser("insights", help="Print JSON insights from recent check-ins.")
+    sub.add_parser("version", help="Print version details.")
+
+    return p
+
+
+def version_payload(db: DB) -> dict[str, t.Any]:
+    return {
+        "app": "assistAI",
+        "schema_version": SCHEMA_VERSION,
+        "python": ".".join(map(str, sys.version_info[:3])),
+        "install_id": _get_install_id(),
+        "db_path": db.path,
+        "persona": dataclasses.asdict(PERSONA),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    db = db_open(args.db)
+    try:
+        if args.cmd is None:
+            interactive(db)
+            return 0
+        if args.cmd == "checkin":
+            cmd_quick_checkin(db, args.mood, args.energy, args.stress, args.intent, args.note, args.tags)
+            return 0
+        if args.cmd == "export":
+            cmd_export(db, args.format)
+            return 0
+        if args.cmd == "insights":
+            cmd_insights(db)
+            return 0
+        if args.cmd == "version":
+            print(json.dumps(version_payload(db), ensure_ascii=False, indent=2))
+            return 0
+        parser.print_help()
+        return 2
+    except KeyboardInterrupt:
+        print()
+        _say("Stopping. Be gentle with yourself.")
+        return 130
+    except Exception as e:
+        print(_hr("!"))
+        _say("Something went wrong. Here’s the technical error so you can fix it or show it to me:")
+        print(_hr("!"))
+        traceback.print_exception(type(e), e, e.__traceback__)
+        print(_hr("!"))
+        return 1
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
