@@ -1443,3 +1443,88 @@ def cmd_export(db: DB, fmt: str) -> None:
 def cmd_insights(db: DB) -> None:
     items = list_checkins(db, limit=120)
     if not items:
+        print("No check-ins yet.")
+        return
+    moods = [c.mood for c in items][::-1]
+    energies = [c.energy for c in items][::-1]
+    stresses = [c.stress for c in items][::-1]
+    payload = {
+        "count": len(items),
+        "mood": {"avg": _avg(moods), "median": _median(moods), "trend": _trend(moods)},
+        "energy": {"avg": _avg(energies), "median": _median(energies), "trend": _trend(energies)},
+        "stress": {"avg": _avg(stresses), "median": _median(stresses), "trend": _trend(stresses)},
+        "latest": dataclasses.asdict(items[0]),
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+# -----------------------------
+# Main loop
+# -----------------------------
+
+
+def _apply_runtime_settings(db: DB) -> None:
+    # only used for this run (wrap width).
+    global _wrap
+    w = db.get_setting("wrap_width", None)
+    if w is not None:
+        with contextlib.suppress(Exception):
+            width = int(w)
+            width = _clamp(width, 60, 120)
+
+            def _wrap2(s: str, width: int = width) -> str:  # type: ignore[misc]
+                return "\n".join(textwrap.fill(line, width=width) if line.strip() else "" for line in s.splitlines())
+
+            _wrap = _wrap2  # type: ignore[assignment]
+
+
+def interactive(db: DB) -> None:
+    _apply_runtime_settings(db)
+    _banner(db)
+    _say("If you want, start with a check-in. I’ll meet you where you are.")
+    _say_list("Today’s gentle rules:", ENGINE.gentle_rules())
+
+    while True:
+        _show_menu()
+        choice = _soft_prompt("Choose:")
+        if choice == "0":
+            _say("Okay. Before you go: pick one kind thing you can do for yourself in the next hour.")
+            break
+        if choice == "1":
+            do_checkin_flow(db)
+        elif choice == "2":
+            do_journal_new(db)
+        elif choice == "3":
+            do_journal_list_and_read(db)
+        elif choice == "4":
+            run_grounding(db)
+        elif choice == "5":
+            run_breathing(db)
+        elif choice == "6":
+            run_reframe(db)
+        elif choice == "7":
+            run_thought_record(db)
+        elif choice == "8":
+            run_values_clarifier(db)
+        elif choice == "9":
+            run_safety_plan(db)
+        elif choice == "10":
+            view_safety_plans(db)
+        elif choice == "11":
+            show_insights(db)
+        elif choice == "12":
+            do_export(db)
+        elif choice == "13":
+            do_settings(db)
+        else:
+            _say("I didn’t catch that. Choose a number from the menu.")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="assistAI", description="Local emotional support + structure assistant (no keys needed).")
+    p.add_argument("--db", default=db_path_default(), help="Path to SQLite DB (default: ./assistAI_data.sqlite3)")
+
+    sub = p.add_subparsers(dest="cmd")
+
+    q = sub.add_parser("checkin", help="Quick non-interactive check-in.")
+    q.add_argument("--mood", type=int, required=True)
