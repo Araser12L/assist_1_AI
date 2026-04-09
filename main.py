@@ -678,3 +678,88 @@ def add_checkin(db: DB, mood: int, energy: int, stress: int, intent: str, note: 
     cur = db.conn.cursor()
     cur.execute(
         """
+        INSERT INTO checkins(id,created_at,day_key,mood,energy,stress,intent,note,glyph,tags)
+        VALUES(?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            ck.id,
+            ck.created_at,
+            ck.day_key,
+            ck.mood,
+            ck.energy,
+            ck.stress,
+            ck.intent,
+            ck.note,
+            ck.glyph,
+            _tags_json(ck.tags),
+        ),
+    )
+    db.conn.commit()
+    return ck
+
+
+def list_checkins(db: DB, limit: int = 30) -> list[CheckIn]:
+    limit = _clamp(limit, 1, 500)
+    cur = db.conn.cursor()
+    cur.execute(
+        "SELECT * FROM checkins ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    )
+    out: list[CheckIn] = []
+    for r in cur.fetchall():
+        out.append(
+            CheckIn(
+                id=r["id"],
+                created_at=r["created_at"],
+                day_key=r["day_key"],
+                mood=int(r["mood"]),
+                energy=int(r["energy"]),
+                stress=int(r["stress"]),
+                intent=r["intent"],
+                note=r["note"],
+                glyph=r["glyph"],
+                tags=_tags_from_json(r["tags"]),
+            )
+        )
+    return out
+
+
+def get_checkin(db: DB, id_: str) -> CheckIn | None:
+    cur = db.conn.cursor()
+    cur.execute("SELECT * FROM checkins WHERE id=?", (id_,))
+    r = cur.fetchone()
+    if not r:
+        return None
+    return CheckIn(
+        id=r["id"],
+        created_at=r["created_at"],
+        day_key=r["day_key"],
+        mood=int(r["mood"]),
+        energy=int(r["energy"]),
+        stress=int(r["stress"]),
+        intent=r["intent"],
+        note=r["note"],
+        glyph=r["glyph"],
+        tags=_tags_from_json(r["tags"]),
+    )
+
+
+def add_journal(db: DB, title: str, body: str, mood_hint: int, energy_hint: int, stress_hint: int, tags: list[str]) -> JournalEntry:
+    now = _now().isoformat()
+    title = (title or "").strip() or "Untitled"
+    title = title[:140]
+    body = (body or "").strip()[:24000]
+    je = JournalEntry(
+        id="jr_" + _rand_token(20),
+        created_at=now,
+        updated_at=now,
+        title=title,
+        body=body,
+        mood_hint=_clamp(mood_hint, 0, 100),
+        energy_hint=_clamp(energy_hint, 0, 100),
+        stress_hint=_clamp(stress_hint, 0, 100),
+        tags=tags[:40],
+    )
+    cur = db.conn.cursor()
+    cur.execute(
+        """
