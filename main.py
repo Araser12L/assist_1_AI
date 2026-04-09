@@ -423,3 +423,88 @@ def _split_tags(raw: str) -> list[str]:
 def _tags_json(tags: list[str]) -> str:
     return json.dumps(tags, ensure_ascii=False, separators=(",", ":"))
 
+
+def _tags_from_json(s: str) -> list[str]:
+    try:
+        v = json.loads(s)
+        if isinstance(v, list):
+            return [str(x) for x in v][:64]
+    except Exception:
+        pass
+    return []
+
+
+@dataclasses.dataclass
+class CheckIn:
+    id: str
+    created_at: str
+    day_key: str
+    mood: int
+    energy: int
+    stress: int
+    intent: str
+    note: str
+    glyph: str
+    tags: list[str]
+
+
+@dataclasses.dataclass
+class JournalEntry:
+    id: str
+    created_at: str
+    updated_at: str
+    title: str
+    body: str
+    mood_hint: int
+    energy_hint: int
+    stress_hint: int
+    tags: list[str]
+
+
+@dataclasses.dataclass
+class ExerciseLog:
+    id: str
+    created_at: str
+    kind: str
+    payload: dict[str, t.Any]
+
+
+# -----------------------------
+# “Emotional advice” engine
+# -----------------------------
+
+
+class AdviceEngine:
+    def __init__(self) -> None:
+        install_id = _get_install_id()
+        seed = int(hashlib.sha256(("assistAI|" + install_id).encode("utf-8")).hexdigest()[:16], 16)
+        self.rng = random.Random(seed)
+
+    def micro_advice(self, mood: int, energy: int, stress: int) -> str:
+        # mood/energy/stress are 0..100
+        m, e, s = mood, energy, stress
+        if m <= 20 and s >= 75:
+            return (
+                "Right now looks like a 'contain the moment' situation. "
+                "Try the 3–2–1 reset: 3 slow breaths, name 2 things you can control today, then do 1 small action."
+            )
+        if e <= 20 and m <= 35:
+            return (
+                "Your system sounds tired. The goal isn’t productivity — it’s stabilization. "
+                "Water, a bite of food, and a 3‑minute cleanup or stretch. Then you’re allowed to stop."
+            )
+        if s >= 90:
+            return (
+                "That stress level is loud. Reduce decisions for 15 minutes. "
+                "Pick one boundary: 'not now', 'not today', or 'only the minimum'."
+            )
+        if m >= 80 and e >= 60 and s <= 55:
+            return (
+                "You’ve got clean momentum. Use it kindly: one meaningful task, no sprinting, no extra promises. "
+                "Finish one thing and celebrate it."
+            )
+        if m >= 70 and s <= 30:
+            return (
+                "You seem steady. Protect that steadiness. "
+                "Keep your day simple, and don’t donate your peace to other people’s chaos."
+            )
