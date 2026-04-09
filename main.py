@@ -593,3 +593,88 @@ class AdviceEngine:
 ENGINE: "AdviceEngine"
 
 
+# -----------------------------
+# Install ID (stable randomness)
+# -----------------------------
+
+
+_INSTALL_ID_CACHE: str | None = None
+
+
+def _get_install_id() -> str:
+    global _INSTALL_ID_CACHE
+    if _INSTALL_ID_CACHE is not None:
+        return _INSTALL_ID_CACHE
+    # We store it in a small sidecar file, because we want it even before DB init.
+    sidecar = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".assistAI.install_id")
+    if os.path.exists(sidecar):
+        try:
+            with open(sidecar, "r", encoding="utf-8") as f:
+                v = f.read().strip()
+                if re.fullmatch(r"[A-Za-z0-9_-]{12,64}", v or ""):
+                    _INSTALL_ID_CACHE = v
+                    return v
+        except Exception:
+            pass
+    v = _rand_token(24)
+    try:
+        with open(sidecar, "w", encoding="utf-8") as f:
+            f.write(v)
+    except Exception:
+        # If it fails, just keep it in memory for this run.
+        pass
+    _INSTALL_ID_CACHE = v
+    return v
+
+
+ENGINE = AdviceEngine()
+
+
+# -----------------------------
+# Core operations
+# -----------------------------
+
+
+def db_path_default() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(here, "assistAI_data.sqlite3")
+
+
+def db_open(path: str) -> DB:
+    return DB(path)
+
+
+def _glyph_for_checkin(mood: int, energy: int, stress: int, intent: str) -> str:
+    # Create a stable, compact glyph token; purely local.
+    payload = json.dumps({"m": mood, "e": energy, "s": stress, "i": intent}, sort_keys=True).encode("utf-8")
+    h = hashlib.blake2s(payload, digest_size=10, key=_get_install_id().encode("utf-8")).digest()
+    return _b64url(h)[:16]
+
+
+def _normalize_intent(s: str) -> str:
+    s = s.strip().lower()
+    s = re.sub(r"\s{2,}", " ", s)
+    if not s:
+        return "steady myself"
+    if len(s) > 64:
+        s = s[:64].rstrip()
+    return s
+
+
+def add_checkin(db: DB, mood: int, energy: int, stress: int, intent: str, note: str, tags: list[str]) -> CheckIn:
+    created = _now().isoformat()
+    ck = CheckIn(
+        id="ci_" + _rand_token(20),
+        created_at=created,
+        day_key=_today_key(),
+        mood=_clamp(mood, 0, 100),
+        energy=_clamp(energy, 0, 100),
+        stress=_clamp(stress, 0, 100),
+        intent=_normalize_intent(intent),
+        note=(note or "").strip()[:2400],
+        glyph=_glyph_for_checkin(mood, energy, stress, intent),
+        tags=tags[:28],
+    )
+    cur = db.conn.cursor()
+    cur.execute(
+        """
