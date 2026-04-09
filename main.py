@@ -253,3 +253,88 @@ class DB:
             """
             CREATE TABLE IF NOT EXISTS meta(
                 k TEXT PRIMARY KEY,
+                v TEXT NOT NULL
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS checkins(
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                day_key TEXT NOT NULL,
+                mood INTEGER NOT NULL,
+                energy INTEGER NOT NULL,
+                stress INTEGER NOT NULL,
+                intent TEXT NOT NULL,
+                note TEXT NOT NULL,
+                glyph TEXT NOT NULL,
+                tags TEXT NOT NULL
+            );
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_checkins_day_key ON checkins(day_key);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_checkins_created_at ON checkins(created_at);")
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS journal(
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                mood_hint INTEGER NOT NULL,
+                energy_hint INTEGER NOT NULL,
+                stress_hint INTEGER NOT NULL,
+                tags TEXT NOT NULL
+            );
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_journal_created_at ON journal(created_at);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_journal_updated_at ON journal(updated_at);")
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS exercises(
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                payload_json TEXT NOT NULL
+            );
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_exercises_kind ON exercises(kind);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_exercises_created_at ON exercises(created_at);")
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings(
+                k TEXT PRIMARY KEY,
+                v TEXT NOT NULL
+            );
+            """
+        )
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS safety_notes(
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                body TEXT NOT NULL
+            );
+            """
+        )
+
+        ver = self.get_meta_int("schema_version", 0)
+        if ver == 0:
+            self.set_meta("schema_version", str(SCHEMA_VERSION))
+            self.set_meta("install_id", _rand_token(24))
+            self.set_meta("installed_at", _now().isoformat())
+        elif ver != SCHEMA_VERSION:
+            self._migrate(ver, SCHEMA_VERSION)
+        self.conn.commit()
+
+    def _migrate(self, from_v: int, to_v: int) -> None:
+        # Minimal migrations. This app keeps schema stable and only adds tables/columns.
