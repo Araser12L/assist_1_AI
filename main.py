@@ -1018,3 +1018,88 @@ def run_values_clarifier(db: DB) -> None:
     v2 = _soft_prompt(f"In '{d2}', what do you want to stand for? (3-8 words):")[:80].strip()
     act = _soft_prompt("One tiny action that matches one of those values (today or tomorrow):")[:120].strip()
     payload = {"domains_presented": chosen, "picked": [d1, d2], "value_lines": [v1, v2], "tiny_action": act, "at": _now().isoformat()}
+    add_exercise_log(db, "values", payload)
+    _say("Values are a lighthouse, not a whip. If your action is small, it’s still aligned.")
+    _pause()
+
+
+def run_safety_plan(db: DB) -> None:
+    _say("Let’s make a mini safety plan. This is for rough moments — a script you can follow.")
+    warn = _soft_prompt("Warning signs (what tells you you're sliding):")[:600]
+    coping = _soft_prompt("Coping steps (things you can do alone):")[:600]
+    people = _soft_prompt("People you can contact (names / initials):")[:600]
+    places = _soft_prompt("Places that help (where you feel safer):")[:600]
+    remove = _soft_prompt("Reduce risk (what to move away / lock / avoid):")[:600]
+    reason = _soft_prompt("One reason to stay (even small):")[:300]
+
+    body = json.dumps(
+        {
+            "warning_signs": warn,
+            "coping_steps": coping,
+            "people": people,
+            "places": places,
+            "reduce_risk": remove,
+            "reason_to_stay": reason,
+            "created_at": _now().isoformat(),
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    sid = "sf_" + _rand_token(20)
+    cur = db.conn.cursor()
+    cur.execute(
+        "INSERT INTO safety_notes(id,created_at,kind,body) VALUES(?,?,?,?)",
+        (sid, _now().isoformat(), "safety_plan", body),
+    )
+    db.conn.commit()
+    _say("Saved. You don’t need this plan often — but when you do, you’ll be glad it exists.")
+    _pause()
+
+
+def view_safety_plans(db: DB) -> None:
+    cur = db.conn.cursor()
+    cur.execute("SELECT * FROM safety_notes WHERE kind='safety_plan' ORDER BY created_at DESC LIMIT 10")
+    rows = cur.fetchall()
+    if not rows:
+        _say("No safety plans saved yet.")
+        _pause()
+        return
+    _say("Here are your most recent safety plans:")
+    for i, r in enumerate(rows, 1):
+        print(f"{i:2d}) {r['created_at']}  ({r['id']})")
+    ix = _int_prompt("Open which one", 1, len(rows), default=1)
+    r = rows[ix - 1]
+    try:
+        obj = json.loads(r["body"])
+        pretty = json.dumps(obj, ensure_ascii=False, indent=2)
+    except Exception:
+        pretty = r["body"]
+    _print_box("Safety plan", pretty)
+    _pause()
+
+
+# -----------------------------
+# Insights / analytics (local)
+# -----------------------------
+
+
+def _avg(nums: list[int]) -> float:
+    if not nums:
+        return 0.0
+    return sum(nums) / len(nums)
+
+
+def _median(nums: list[int]) -> float:
+    if not nums:
+        return 0.0
+    a = sorted(nums)
+    n = len(a)
+    mid = n // 2
+    if n % 2 == 1:
+        return float(a[mid])
+    return (a[mid - 1] + a[mid]) / 2.0
+
+
+def _trend(nums: list[int]) -> float:
+    # Tiny linear trend estimate (slope) normalized.
+    n = len(nums)
