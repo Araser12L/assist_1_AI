@@ -1103,3 +1103,88 @@ def _median(nums: list[int]) -> float:
 def _trend(nums: list[int]) -> float:
     # Tiny linear trend estimate (slope) normalized.
     n = len(nums)
+    if n < 3:
+        return 0.0
+    xs = list(range(n))
+    xbar = sum(xs) / n
+    ybar = sum(nums) / n
+    num = sum((x - xbar) * (y - ybar) for x, y in zip(xs, nums))
+    den = sum((x - xbar) ** 2 for x in xs) or 1.0
+    return num / den
+
+
+def show_insights(db: DB) -> None:
+    items = list_checkins(db, limit=120)
+    if not items:
+        _say("No check-ins yet. Add one and I’ll start spotting patterns.")
+        _pause()
+        return
+
+    moods = [c.mood for c in items][::-1]
+    energies = [c.energy for c in items][::-1]
+    stresses = [c.stress for c in items][::-1]
+    last = items[0]
+
+    _say("Here’s what I’m noticing from your recent check-ins.")
+    print(_hr())
+    print(_wrap(f"Latest: mood {last.mood}/100, energy {last.energy}/100, stress {last.stress}/100 — intent: {last.intent}"))
+    print(_hr())
+
+    def _fmt(name: str, arr: list[int]) -> str:
+        return (
+            f"{name:7s}  avg {(_avg(arr)):.1f}   median {(_median(arr)):.1f}   trend {(_trend(arr)):+.2f} per check-in"
+        )
+
+    print(_fmt("mood", moods))
+    print(_fmt("energy", energies))
+    print(_fmt("stress", stresses))
+    print(_hr())
+
+    # Gentle interpretation
+    mood_tr = _trend(moods)
+    stress_tr = _trend(stresses)
+    if mood_tr > 0.4 and stress_tr < -0.3:
+        _say("This looks like you’re climbing out of something. Keep the supports that helped — don’t stop them because you feel better.")
+    elif mood_tr < -0.4 and stress_tr > 0.3:
+        _say("This looks like your load is rising. Let’s reduce demands and add support. Want a grounding script or a thought record?")
+    elif stress_tr > 0.35:
+        _say("Stress is trending up. If you can, protect sleep and simplify commitments for a few days.")
+    elif mood_tr < -0.35:
+        _say("Mood is trending down. That’s a signal to add warmth and contact, not to punish yourself with 'shoulds.'")
+    else:
+        _say("Your pattern looks relatively stable. Stability is a win. Don’t underestimate it.")
+    _pause()
+
+
+# -----------------------------
+# Exports (JSON / Markdown)
+# -----------------------------
+
+
+def _export_dir() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    out = os.path.join(here, "assistAI_exports")
+    _safe_mkdir(out)
+    return out
+
+
+def export_json(db: DB) -> str:
+    cur = db.conn.cursor()
+    cur.execute("SELECT * FROM checkins ORDER BY created_at ASC")
+    checkins = [dict(r) for r in cur.fetchall()]
+    cur.execute("SELECT * FROM journal ORDER BY created_at ASC")
+    journal = [dict(r) for r in cur.fetchall()]
+    cur.execute("SELECT * FROM exercises ORDER BY created_at ASC")
+    exercises = [dict(r) for r in cur.fetchall()]
+    cur.execute("SELECT * FROM meta")
+    meta = {r["k"]: r["v"] for r in cur.fetchall()}
+
+    payload = {
+        "exported_at": _now().isoformat(),
+        "install_id": _get_install_id(),
+        "persona": dataclasses.asdict(PERSONA),
+        "meta": meta,
+        "checkins": checkins,
+        "journal": journal,
+        "exercises": exercises,
+    }
