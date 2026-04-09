@@ -508,3 +508,88 @@ class AdviceEngine:
                 "You seem steady. Protect that steadiness. "
                 "Keep your day simple, and don’t donate your peace to other people’s chaos."
             )
+        if e >= 80 and s >= 65:
+            return (
+                "High energy + high stress can feel like a storm. "
+                "Move your body for 6 minutes (walk, stairs, shaking out your arms), then reassess."
+            )
+        if m <= 35 and s <= 40:
+            return (
+                "Low mood with low alarm often needs warmth and connection. "
+                "Do one sensory comfort (tea, shower, fresh air) and send one low‑stakes message to someone safe."
+            )
+        return (
+            "Let’s keep it doable: check basics (water, food, light, movement). "
+            "Then choose the smallest next step you can complete in under 5 minutes."
+        )
+
+    def reframe(self, label: str) -> str:
+        label = label.strip().lower()
+        common = {
+            "guilt": "Guilt can be a compass, not a prison. What value is it pointing to, and what repair is realistic today?",
+            "shame": "Shame says 'I am bad.' Try swapping to 'I did a thing I regret.' That gives you room to learn and still belong.",
+            "anger": "Anger often protects something tender. What boundary was crossed — and what boundary do you need next?",
+            "grief": "Grief is love with nowhere to go. Let it have a small place today: one memory, one breath, one honest sentence.",
+            "fear": "Fear zooms in. Zoom out: most likely outcome, worst outcome, and what support you’d use if it happened.",
+            "lonely": "Loneliness is a signal, not a verdict. Can you make one bid for connection — small, honest, low stakes?",
+            "overwhelmed": "Overwhelm means your load exceeded your capacity. Let’s reduce the load first, then rebuild capacity.",
+            "numb": "Numb can be protection. If you can’t feel big feelings, aim for small sensations: warmth, texture, movement, sound.",
+        }
+        if label in common:
+            return common[label]
+        starters = [
+            "Name it precisely, then soften it:",
+            "Try giving the feeling a little space:",
+            "Let’s separate facts from the story:",
+            "Try a kinder translation:",
+        ]
+        self.rng.shuffle(starters)
+        return (
+            f"{starters[0]} 'I’m noticing {label}.' "
+            "Then ask: what do I need right now — comfort, clarity, protection, or a next step?"
+        )
+
+    def validate_crisis(self, text: str) -> tuple[bool, str]:
+        t0 = text.lower()
+        # This is intentionally conservative. It doesn't call external services.
+        triggers = [
+            "suicide",
+            "kill myself",
+            "end it",
+            "self harm",
+            "self-harm",
+            "hurt myself",
+            "overdose",
+            "i want to die",
+        ]
+        if any(x in t0 for x in triggers):
+            msg = (
+                "I’m really glad you said something. I can’t handle emergencies, but you deserve real help right now.\n\n"
+                "If you’re in immediate danger, call your local emergency number.\n"
+                "If you can, reach out to someone you trust and stay with them.\n"
+                "If you want, tell me your country and I’ll help you find a crisis line to call or text."
+            )
+            return True, msg
+        return False, ""
+
+    def gentle_rules(self) -> list[str]:
+        return list(PERSONA.gentle_rules)
+
+    def grounding_script(self, seconds: int = 90) -> list[str]:
+        # A timed script. The app can display it stepwise.
+        seconds = _clamp(int(seconds), 30, 300)
+        steps = []
+        steps.append(f"Set a timer for {seconds} seconds. We’re not fixing life; we’re settling your nervous system.")
+        steps.append("Put one hand on your chest or belly. Feel the contact. That contact is evidence: you are here.")
+        steps.append("Inhale through the nose for 4, exhale for 6. If you can’t, just make the exhale longer than the inhale.")
+        steps.append("Name 5 things you can see. Say them quietly if you can.")
+        steps.append("Name 4 things you can feel (texture, temperature, pressure).")
+        steps.append("Name 3 sounds you can hear (near, far, internal).")
+        steps.append("Name 2 scents or tastes, even if it’s 'nothing.'")
+        steps.append("Name 1 tiny next action that makes you safer or steadier in the next 10 minutes.")
+        return steps
+
+
+ENGINE: "AdviceEngine"
+
+
