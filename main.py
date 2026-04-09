@@ -338,3 +338,88 @@ class DB:
 
     def _migrate(self, from_v: int, to_v: int) -> None:
         # Minimal migrations. This app keeps schema stable and only adds tables/columns.
+        cur = self.conn.cursor()
+        v = from_v
+        while v < to_v:
+            nv = v + 1
+            if nv == 5:
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_checkins_created_at ON checkins(created_at);")
+            if nv == 6:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS safety_notes(
+                        id TEXT PRIMARY KEY,
+                        created_at TEXT NOT NULL,
+                        kind TEXT NOT NULL,
+                        body TEXT NOT NULL
+                    );
+                    """
+                )
+            if nv == 7:
+                # settings table already exists; just ensure it
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS settings(
+                        k TEXT PRIMARY KEY,
+                        v TEXT NOT NULL
+                    );
+                    """
+                )
+            v = nv
+        self.set_meta("schema_version", str(to_v))
+        self.conn.commit()
+
+    def get_meta(self, k: str, default: str | None = None) -> str | None:
+        cur = self.conn.cursor()
+        cur.execute("SELECT v FROM meta WHERE k=?", (k,))
+        row = cur.fetchone()
+        return row["v"] if row else default
+
+    def get_meta_int(self, k: str, default: int) -> int:
+        v = self.get_meta(k, None)
+        if v is None:
+            return default
+        with contextlib.suppress(Exception):
+            return int(v)
+        return default
+
+    def set_meta(self, k: str, v: str) -> None:
+        cur = self.conn.cursor()
+        cur.execute("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (k, v))
+
+    def get_setting(self, k: str, default: str | None = None) -> str | None:
+        cur = self.conn.cursor()
+        cur.execute("SELECT v FROM settings WHERE k=?", (k,))
+        row = cur.fetchone()
+        return row["v"] if row else default
+
+    def set_setting(self, k: str, v: str) -> None:
+        cur = self.conn.cursor()
+        cur.execute("INSERT INTO settings(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (k, v))
+        self.conn.commit()
+
+
+# -----------------------------
+# Data models + serialization
+# -----------------------------
+
+
+def _split_tags(raw: str) -> list[str]:
+    raw = raw.strip()
+    if not raw:
+        return []
+    parts = re.split(r"[,\s]+", raw)
+    out: list[str] = []
+    for p in parts:
+        p = p.strip().lower()
+        if not p:
+            continue
+        p = re.sub(r"[^a-z0-9_-]+", "", p)
+        if p and p not in out:
+            out.append(p)
+    return out[:28]
+
+
+def _tags_json(tags: list[str]) -> str:
+    return json.dumps(tags, ensure_ascii=False, separators=(",", ":"))
+
